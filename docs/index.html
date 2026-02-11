@@ -1,0 +1,1502 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Raycast Sandbox — Google Sites Ready</title>
+<style>
+  body{ margin:0; background:#05060a; color:#fff; font-family:system-ui; overflow:hidden;}
+  .wrap{ position:relative; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
+  canvas{ background:#000; border-radius:14px; width:min(1280px, 98vw); height:auto; aspect-ratio:16/9; touch-action:none; }
+  .topbar{ position:fixed; left:12px; top:10px; display:flex; gap:8px; z-index:80; flex-wrap:wrap; align-items:center; }
+  button{ padding:9px 12px; border-radius:12px; border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.10); color:#fff; font-weight:900; cursor:pointer; }
+  button:hover{ background:rgba(255,255,255,0.16); }
+  .tag{ font-size:12px; opacity:0.9; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); }
+
+  .panel{ position:fixed; inset:0; display:none; z-index:90;
+    background:rgba(0,0,0,0.62); align-items:center; justify-content:center; }
+  .card{ width:min(1050px, 95vw); background:rgba(16,16,26,0.94);
+    border:1px solid rgba(255,255,255,0.10); border-radius:16px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.55); padding:14px; }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .grid{ display:grid; grid-template-columns: 1.25fr 0.75fr; gap:12px; }
+  .box{ background:rgba(255,255,255,0.06); border-radius:14px; padding:12px; border:1px solid rgba(255,255,255,0.08); }
+  .small{ font-size:12px; opacity:0.88; }
+  input, select{
+    padding:9px 10px; border-radius:12px; border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.10); color:#fff; outline:none;
+  }
+  .rooms{ max-height:320px; overflow:auto; padding-right:6px; }
+  .room{
+    display:flex; align-items:center; justify-content:space-between;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.10);
+    padding:10px; border-radius:12px; margin-bottom:8px;
+  }
+  pre{ white-space:pre-wrap; word-break:break-word; background:rgba(0,0,0,0.35);
+    padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); }
+
+  #pauseOverlay{
+    position:fixed; inset:0; display:none; z-index:85;
+    align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.45);
+    font-size:34px; font-weight:1000; letter-spacing:2px;
+  }
+
+  /* TOUCH HUD */
+  .touchHud{ position:absolute; inset:0; display:none; z-index:40; pointer-events:none; }
+  .stick{ position:absolute; width:150px; height:150px; border-radius:50%;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); pointer-events:auto; }
+  .knob{ position:absolute; left:50%; top:50%; width:68px; height:68px; margin-left:-34px; margin-top:-34px;
+    border-radius:50%; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.18); }
+  .tbtns{ position:absolute; right:180px; bottom:30px; display:flex; gap:8px; pointer-events:auto;
+    flex-wrap:wrap; width:min(460px, 62vw); justify-content:flex-end;}
+  .tbtn{ width:54px; height:54px; border-radius:16px; font-size:16px; padding:0; }
+  .tbtnWide{ width:110px; }
+  .hudHint{ position:absolute; left:12px; bottom:180px; font-size:12px; opacity:0.85; pointer-events:none; }
+
+  /* CHAT: hidden by default, appears with T (and HUD T) */
+  #chatBox{
+    position:fixed; left:12px; bottom:12px; z-index:70; width:min(420px, 92vw);
+    display:none;
+  }
+  #chatBox.show{ display:block; }
+  #chatLog{
+    height:150px; overflow:auto; padding:10px; border-radius:12px;
+    background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.12); font-size:13px;
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <button id="btnObjects">📦 Objetos (Q)</button>
+    <button id="btnLobby">🌐 Lobby</button>
+    <button id="btnFull">⛶ Fullscreen</button>
+    <button id="btnPause">⏸ Pausa</button>
+    <span class="tag" id="netTag">WS: —</span>
+    <span class="tag" id="padTag">Pad: —</span>
+  </div>
+
+  <div id="pauseOverlay">PAUSA</div>
+
+  <div class="wrap" id="wrap">
+    <canvas id="game" width="1280" height="720"></canvas>
+
+    <div id="touchHud" class="touchHud">
+      <div id="tLeft" class="stick" style="left:18px; bottom:18px;"><div id="tLeftKnob" class="knob"></div></div>
+      <div id="tRight" class="stick" style="right:18px; bottom:18px;"><div id="tRightKnob" class="knob"></div></div>
+
+      <div class="hudHint">Touch HUD • izq: mover • der: mirar</div>
+
+      <div class="tbtns">
+        <button class="tbtn tbtnWide" data-act="shoot">🔫</button>
+        <button class="tbtn" data-act="jump">⤒</button>
+        <button class="tbtn" data-act="spawn">E</button>
+        <button class="tbtn" data-act="npc">🤖</button>
+        <button class="tbtn" data-act="kick">K</button>
+        <button class="tbtn" data-act="del">X</button>
+        <button class="tbtn" data-act="chat">T</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="chatBox">
+    <div id="chatLog"></div>
+    <div class="row" style="margin-top:8px;">
+      <input id="chatInput" placeholder="Chat… (Enter para enviar) — ESC para cerrar" style="flex:1;" />
+      <button id="chatSend">Enviar</button>
+    </div>
+  </div>
+
+  <!-- OBJECT MENU (Q) -->
+  <div id="objPanel" class="panel">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div style="font-size:18px;font-weight:1000;">Menú de Objetos (Q)</div>
+        <div class="row"><button id="btnCloseObj">Cerrar</button></div>
+      </div>
+
+      <div class="grid" style="margin-top:12px;">
+        <div class="box">
+          <div style="font-weight:1000;margin-bottom:8px;">Elegí qué spawnear</div>
+          <div class="row" id="objButtons"></div>
+          <div class="small" style="margin-top:10px;">
+            • 1–9 cambia objeto<br>
+            • Spawn: E<br>
+            • Spawn NPC: N<br>
+            • Pelota: K para patear (rebota server-side)
+          </div>
+        </div>
+
+        <div class="box">
+          <div style="font-weight:1000;">Info</div>
+          <pre id="objInfo">—</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOBBY -->
+  <div id="lobbyPanel" class="panel">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div style="font-size:18px;font-weight:1000;">Lobby • Servers</div>
+        <div class="row"><button id="btnCloseLobby">Cerrar</button></div>
+      </div>
+
+      <div class="grid" style="margin-top:12px;">
+        <div class="box">
+          <div class="row" style="justify-content:space-between;">
+            <div style="font-weight:1000;">Lista</div>
+            <div class="row">
+              <button id="btnRefresh">↻</button>
+              <select id="filterFull">
+                <option value="all">Todos</option>
+                <option value="open">Abiertos</option>
+                <option value="full">Full</option>
+              </select>
+            </div>
+          </div>
+          <div id="rooms" class="rooms" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="box">
+          <div style="font-weight:1000;margin-bottom:8px;">Crear sala</div>
+          <div class="row">
+            <input id="roomName" placeholder="Nombre sala" value="Sala Ray" />
+            <select id="visibility">
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+
+          <div class="row" style="margin-top:8px;">
+            <select id="lock">
+              <option value="code">Private con Código</option>
+              <option value="password">Private con Contraseña</option>
+            </select>
+            <select id="maxPlayers">
+              <option>2</option><option>3</option><option>4</option><option>6</option><option>8</option><option>12</option><option>16</option>
+            </select>
+          </div>
+
+          <div class="row" style="margin-top:8px;">
+            <input id="password" placeholder="Contraseña (si elegís password)" />
+          </div>
+
+          <div class="row" style="margin-top:10px;">
+            <button id="btnCreate">Crear</button>
+            <button id="btnLeave">Salir sala</button>
+          </div>
+
+          <div style="height:10px"></div>
+          <div class="small">Estado:</div>
+          <pre id="status">—</pre>
+          <div class="small">Gamepad debug (F2 cambia pad):</div>
+          <pre id="gpdbg">—</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ============================================================
+  // CONFIG: set your Render WS host here (no https)
+  // Example: "my-raycast-server.onrender.com"
+  // ============================================================
+  const RENDER_WS_HOST = "TU-SERVER.onrender.com";
+
+  // ============================================================
+  // Persistent ID + Nick
+  // ============================================================
+  function getOrCreateId(){
+    let id = localStorage.getItem("ray_user_id");
+    if(!id){
+      id = "u_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+      localStorage.setItem("ray_user_id", id);
+    }
+    return id;
+  }
+  function getOrAskNick(){
+    let n = localStorage.getItem("ray_nick");
+    if(!n || !n.trim()){
+      n = prompt("Elegí tu nombre (se guarda en este dispositivo):", "Player") || "Player";
+      n = n.trim().slice(0,18) || "Player";
+      localStorage.setItem("ray_nick", n);
+    }
+    return n;
+  }
+  const PERMA_ID = getOrCreateId();
+  let PERMA_NICK = getOrAskNick();
+
+  // ============================================================
+  // DOM
+  // ============================================================
+  const wrap = document.getElementById("wrap");
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const btnObjects = document.getElementById("btnObjects");
+  const btnLobby = document.getElementById("btnLobby");
+  const btnFull = document.getElementById("btnFull");
+  const btnPause = document.getElementById("btnPause");
+
+  const netTag = document.getElementById("netTag");
+  const padTag = document.getElementById("padTag");
+  const pauseOverlay = document.getElementById("pauseOverlay");
+
+  const objPanel = document.getElementById("objPanel");
+  const lobbyPanel = document.getElementById("lobbyPanel");
+
+  const btnCloseObj = document.getElementById("btnCloseObj");
+  const btnCloseLobby = document.getElementById("btnCloseLobby");
+
+  const objButtons = document.getElementById("objButtons");
+  const objInfo = document.getElementById("objInfo");
+
+  const roomsEl = document.getElementById("rooms");
+  const statusEl = document.getElementById("status");
+  const gpdbgEl = document.getElementById("gpdbg");
+
+  const btnRefresh = document.getElementById("btnRefresh");
+  const filterFull = document.getElementById("filterFull");
+
+  const roomNameEl = document.getElementById("roomName");
+  const visibilityEl = document.getElementById("visibility");
+  const lockEl = document.getElementById("lock");
+  const maxPlayersEl = document.getElementById("maxPlayers");
+  const passwordEl = document.getElementById("password");
+  const btnCreate = document.getElementById("btnCreate");
+  const btnLeave = document.getElementById("btnLeave");
+
+  const touchHud = document.getElementById("touchHud");
+  const tLeft = document.getElementById("tLeft");
+  const tRight = document.getElementById("tRight");
+  const tLeftKnob = document.getElementById("tLeftKnob");
+  const tRightKnob = document.getElementById("tRightKnob");
+
+  const chatBox = document.getElementById("chatBox");
+  const chatLog = document.getElementById("chatLog");
+  const chatInput = document.getElementById("chatInput");
+  const chatSend = document.getElementById("chatSend");
+
+  // ============================================================
+  // Helpers
+  // ============================================================
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const deadzone=(v,dz)=>Math.abs(v)<dz?0:v;
+  function normAngle(a){ while(a<-Math.PI)a+=Math.PI*2; while(a>Math.PI)a-=Math.PI*2; return a; }
+
+  function addChatLine(line){
+    const div = document.createElement("div");
+    div.textContent = line;
+    chatLog.appendChild(div);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  // ============================================================
+  // Touch detect
+  // ============================================================
+  const TOUCH = ("ontouchstart" in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints>0) ||
+                (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  if(TOUCH) touchHud.style.display = "block";
+
+  // ============================================================
+  // Vibrations (phone + supported pads)
+  // ============================================================
+  function vibrate(pattern){
+    if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch(e){} }
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for(const gp of pads){
+      if(!gp) continue;
+      if(gp.vibrationActuator && gp.vibrationActuator.playEffect){
+        const dur = Array.isArray(pattern) ? pattern.reduce((a,b)=>a+b,0) : pattern;
+        const duration = clamp(dur|0, 30, 180);
+        try{
+          gp.vibrationActuator.playEffect("dual-rumble", { duration, strongMagnitude:0.55, weakMagnitude:0.25 });
+        }catch(e){}
+        break;
+      }
+    }
+  }
+  const vib = { tap:()=>vibrate(18), jump:()=>vibrate([18,25,35]), shoot:()=>vibrate([10,20,40]) };
+
+  // ============================================================
+  // Fullscreen + Pause
+  // ============================================================
+  let paused=false;
+  async function toggleFullscreen(){
+    try{
+      if(!document.fullscreenElement) await wrap.requestFullscreen();
+      else await document.exitFullscreen();
+      vib.tap();
+    }catch(e){
+      addChatLine("⚠ Fullscreen puede estar bloqueado dentro de iframe. Probá abrir el juego en pestaña nueva.");
+    }
+  }
+  function setPaused(v){
+    paused=v;
+    pauseOverlay.style.display = paused ? "flex" : "none";
+    btnPause.textContent = paused ? "▶ Reanudar" : "⏸ Pausa";
+    vibrate([30,60,30]);
+  }
+  btnFull.onclick = toggleFullscreen;
+  btnPause.onclick = ()=>setPaused(!paused);
+
+  // ============================================================
+  // Panels
+  // ============================================================
+  function openPanel(p){ p.style.display="flex"; }
+  function closePanel(p){ p.style.display="none"; }
+  btnObjects.onclick = ()=>openPanel(objPanel);
+  btnLobby.onclick   = ()=>openPanel(lobbyPanel);
+  btnCloseObj.onclick = ()=>closePanel(objPanel);
+  btnCloseLobby.onclick = ()=>closePanel(lobbyPanel);
+
+  // ============================================================
+  // Chat hidden: T to open, ESC to close (and HUD T button)
+  // ============================================================
+  let chatVisible = false;
+  function showChat(){
+    chatVisible = true;
+    chatBox.classList.add("show");
+    setTimeout(()=>{ try{ chatInput.focus(); }catch{} }, 0);
+    vib.tap();
+  }
+  function hideChat(){
+    chatVisible = false;
+    chatBox.classList.remove("show");
+    try{ chatInput.blur(); }catch{}
+    vib.tap();
+  }
+  function toggleChat(){
+    if(chatVisible) hideChat();
+    else showChat();
+  }
+
+  function sendChat(){
+    if(!currentRoom) return addChatLine("⚠ Entrá a una sala primero.");
+    const t=(chatInput.value||"").trim();
+    if(!t) return;
+    wsSend({t:"chat", text:t});
+    chatInput.value="";
+    // auto hide on mobile after sending
+    if(TOUCH) hideChat();
+  }
+  chatSend.onclick=sendChat;
+  chatInput.addEventListener("keydown",(e)=>{
+    if(e.key==="Enter"){ e.preventDefault(); sendChat(); }
+    if(e.key==="Escape"){ e.preventDefault(); hideChat(); }
+  });
+
+  // ============================================================
+  // Object types
+  // ============================================================
+  const OBJ={ BOX:1, BARREL:2, CRYSTAL:3, BALL:4, TABLE:5, CHAIR:6, SOFA:7, BED:8, DOOR:9 };
+  const typeNames = {1:"Caja",2:"Barril",3:"Cristal",4:"Pelota",5:"Mesa",6:"Silla",7:"Sofá",8:"Cama",9:"Puerta"};
+  let selectedType=OBJ.BOX;
+
+  function buildObjButtons(){
+    objButtons.innerHTML="";
+    for(const t of [1,2,3,4,5,6,7,8,9]){
+      const b=document.createElement("button");
+      b.textContent = `${t} • ${typeNames[t]}`;
+      b.onclick = ()=>{ selectedType=t; updateObjInfo(); vib.tap(); };
+      objButtons.appendChild(b);
+    }
+    const npcBtn=document.createElement("button");
+    npcBtn.textContent="🤖 Spawn NPC";
+    npcBtn.onclick = ()=>{ spawnNPCForward(); vib.tap(); };
+    objButtons.appendChild(npcBtn);
+  }
+  function updateObjInfo(){
+    objInfo.textContent =
+`Seleccionado: ${typeNames[selectedType]}
+Spawn: E | NPC: N | Patear pelota: K
+Chat: T
+Arma: Click / RT / HUD 🔫`;
+  }
+  buildObjButtons(); updateObjInfo();
+
+  // ============================================================
+  // WS URL (Google Sites -> HTTPS -> must be WSS)
+  // ============================================================
+  function getWSUrl(){
+    // Google Sites is https; use wss always for your Render host
+    return `wss://${RENDER_WS_HOST}`;
+  }
+
+  function setStatus(t){ statusEl.textContent = t; }
+  function wsStateLabel(){
+    if(!ws) return "—";
+    if(ws.readyState===0) return "CONNECTING";
+    if(ws.readyState===1) return "OPEN";
+    if(ws.readyState===2) return "CLOSING";
+    return "CLOSED";
+  }
+
+  // ============================================================
+  // Networking with auto-reconnect (important)
+  // ============================================================
+  let ws=null, retry=0, retryTimer=null;
+
+  let myPlayerId=null;
+  let currentRoom=null;
+  let roomsCache=[];
+  let remotePlayers=[];
+  let worldEntities = new Map(); // id -> entity
+  const shotFX=[];
+
+  function wsSend(obj){
+    if(ws && ws.readyState===1) ws.send(JSON.stringify(obj));
+  }
+
+  function connectWS(){
+    const url = getWSUrl();
+    netTag.textContent = "WS: " + url;
+
+    try{ ws = new WebSocket(url); }
+    catch(e){
+      setStatus("WS no pudo iniciarse.");
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = ()=>{
+      retry=0;
+      setStatus("Conectado ✅");
+      wsSend({t:"list"});
+    };
+
+    ws.onclose = ()=>{
+      setStatus("Desconectado. Reintentando...");
+      currentRoom=null;
+      worldEntities.clear();
+      scheduleReconnect();
+    };
+
+    ws.onerror = ()=>{
+      try{ ws.close(); }catch{}
+    };
+
+    ws.onmessage = (ev)=>{
+      let msg; try{ msg=JSON.parse(ev.data); }catch{ return; }
+
+      if(msg.t==="welcome"){ myPlayerId = msg.playerId; }
+      if(msg.t==="rooms"){ roomsCache = msg.rooms || []; renderRooms(); }
+      if(msg.t==="created"){ setStatus("Sala creada ✅" + (msg.code ? `\nCódigo: ${msg.code}`:"")); }
+      if(msg.t==="joined"){
+        currentRoom = msg.room;
+        addChatLine(`🟩 Entraste a: ${currentRoom.name}`);
+        setStatus(`Joined ✅ ${currentRoom.name} (${currentRoom.players}/${currentRoom.maxPlayers})`);
+      }
+      if(msg.t==="snapshot"){
+        worldEntities.clear();
+        for(const e of (msg.entities||[])) worldEntities.set(e.id, e);
+      }
+      if(msg.t==="entity_add"){
+        if(msg.entity && msg.entity.id) worldEntities.set(msg.entity.id, msg.entity);
+      }
+      if(msg.t==="entity_del"){
+        worldEntities.delete(msg.id);
+      }
+      if(msg.t==="entity_hp"){
+        const e = worldEntities.get(msg.id);
+        if(e){ e.hp = msg.hp; worldEntities.set(msg.id, e); }
+      }
+      if(msg.t==="entities_update"){
+        for(const u of (msg.list||[])){
+          const e = worldEntities.get(u.id);
+          if(e){
+            e.x = u.x; e.y = u.y;
+            e.vx = u.vx; e.vy = u.vy;
+            worldEntities.set(u.id, e);
+          }
+        }
+      }
+
+      if(msg.t==="world"){
+        remotePlayers = (msg.players||[]).filter(p=>p.id !== PERMA_ID);
+      }
+
+      if(msg.t==="chat"){
+        addChatLine(`${msg.from}: ${msg.text}`);
+      }
+
+      if(msg.t==="shoot"){
+        shotFX.push({life:10});
+      }
+
+      if(msg.t==="error"){
+        setStatus("ERROR: " + msg.message);
+        addChatLine("❌ " + msg.message);
+      }
+
+      netTag.textContent = "WS: " + wsStateLabel();
+    };
+  }
+
+  function scheduleReconnect(){
+    retry = Math.min(retry+1, 9);
+    const wait = Math.min(6000, 300 * (2 ** retry));
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(connectWS, wait);
+  }
+
+  connectWS();
+
+  // ============================================================
+  // Lobby UI
+  // ============================================================
+  filterFull.onchange = ()=>renderRooms();
+  btnRefresh.onclick = ()=>wsSend({t:"list"});
+
+  function renderRooms(){
+    const mode = filterFull.value;
+    const list = roomsCache.filter(r=>{
+      if(mode==="open") return r.status==="open";
+      if(mode==="full") return r.status==="full";
+      return true;
+    }).sort((a,b)=>{
+      if(a.status!==b.status) return (a.status==="open")?-1:1;
+      return (b.players/b.maxPlayers) - (a.players/a.maxPlayers);
+    });
+
+    roomsEl.innerHTML="";
+    if(!list.length){
+      roomsEl.innerHTML=`<div class="small">No hay salas.</div>`;
+      return;
+    }
+
+    for(const r of list){
+      const left=document.createElement("div");
+      left.innerHTML=`
+        <div style="font-weight:1000">${r.name}</div>
+        <div class="row" style="margin-top:6px">
+          <span class="tag">${r.visibility.toUpperCase()}</span>
+          ${r.codeRequired?`<span class="tag">CODE</span>`:""}
+          ${r.passwordRequired?`<span class="tag">PASS</span>`:""}
+          <span class="tag">${r.players}/${r.maxPlayers}</span>
+          <span class="tag">${r.status.toUpperCase()}</span>
+        </div>
+      `;
+
+      const right=document.createElement("div");
+      right.className="row";
+      const joinBtn=document.createElement("button");
+      joinBtn.textContent="Join";
+      joinBtn.onclick=()=>{
+        let code="", pass="";
+        if(r.codeRequired) code = prompt("Código:") || "";
+        if(r.passwordRequired) pass = prompt("Contraseña:") || "";
+        wsSend({ t:"join_room", roomId:r.id, code, password:pass, nickname:PERMA_NICK, userId:PERMA_ID });
+      };
+      right.appendChild(joinBtn);
+
+      const item=document.createElement("div");
+      item.className="room";
+      item.appendChild(left); item.appendChild(right);
+      roomsEl.appendChild(item);
+    }
+  }
+
+  btnCreate.onclick=()=>{
+    const name = roomNameEl.value || "Sala";
+    const visibility = visibilityEl.value;
+    const lock = lockEl.value;
+    const maxPlayers = Number(maxPlayersEl.value||2);
+    const password = passwordEl.value || "";
+    wsSend({ t:"create_room", name, visibility, lock, password, maxPlayers, nickname:PERMA_NICK, userId:PERMA_ID });
+  };
+  btnLeave.onclick=()=>{
+    wsSend({t:"leave_room"});
+    currentRoom=null;
+    remotePlayers=[];
+    worldEntities.clear();
+    vib.tap();
+  };
+
+  // ============================================================
+  // Input keys (Q objects, T chat)
+  // ============================================================
+  const keys={};
+
+  window.addEventListener("keydown",(e)=>{
+    const k=e.key.toLowerCase();
+
+    // If chat open and focused, don't steal keys
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    const typing = (tag==="INPUT" || tag==="TEXTAREA");
+    if(typing){
+      if(k==="escape") hideChat();
+      return;
+    }
+
+    keys[k]=true;
+
+    if(k==="q"){
+      objPanel.style.display = (objPanel.style.display==="flex") ? "none" : "flex";
+      vib.tap();
+    }
+    if(k==="t"){
+      toggleChat();
+      e.preventDefault();
+    }
+    if(k==="p"){
+      setPaused(!paused);
+    }
+    if(k>="1" && k<="9"){
+      selectedType = Number(k);
+      updateObjInfo();
+    }
+  },{passive:false});
+
+  window.addEventListener("keyup",(e)=>{ keys[e.key.toLowerCase()]=false; });
+
+  // ============================================================
+  // Touch sticks + HUD buttons
+  // ============================================================
+  let tMoveX=0, tMoveY=0, tLookX=0;
+
+  function makeStick(areaEl, knobEl, onMove){
+    let pid=null, cx=0, cy=0;
+    function setKnob(dx,dy){
+      const r=55;
+      const mag=Math.hypot(dx,dy);
+      if(mag>r){ dx=dx/mag*r; dy=dy/mag*r; }
+      knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+      onMove(dx/r, dy/r);
+    }
+    function reset(){
+      pid=null;
+      knobEl.style.transform = `translate(0px,0px)`;
+      onMove(0,0);
+    }
+    areaEl.addEventListener("pointerdown",(e)=>{
+      pid=e.pointerId; areaEl.setPointerCapture(pid);
+      const r=areaEl.getBoundingClientRect();
+      cx=r.left+r.width/2; cy=r.top+r.height/2;
+      setKnob(e.clientX-cx, e.clientY-cy);
+      e.preventDefault();
+    },{passive:false});
+    areaEl.addEventListener("pointermove",(e)=>{
+      if(pid!==e.pointerId) return;
+      setKnob(e.clientX-cx, e.clientY-cy);
+      e.preventDefault();
+    },{passive:false});
+    areaEl.addEventListener("pointerup",(e)=>{
+      if(pid!==e.pointerId) return;
+      reset(); e.preventDefault();
+    },{passive:false});
+    areaEl.addEventListener("pointercancel",(e)=>{ if(pid===e.pointerId) reset(); });
+  }
+
+  if(TOUCH){
+    makeStick(tLeft, tLeftKnob, (x,y)=>{ tMoveX=x; tMoveY=y; });
+    makeStick(tRight,tRightKnob,(x,y)=>{ tLookX=x; });
+  }
+
+  touchHud.addEventListener("pointerdown",(e)=>{
+    const btn = e.target.closest(".tbtn");
+    if(!btn) return;
+    const act = btn.getAttribute("data-act");
+    if(act==="spawn") spawnForward(localPlayer);
+    if(act==="npc") spawnNPCForward();
+    if(act==="kick") kickBall();
+    if(act==="del") deleteLooked();
+    if(act==="jump") tryJump(localPlayer);
+    if(act==="shoot") startShooting();
+    if(act==="chat") showChat();
+    vib.tap();
+    e.preventDefault();
+  },{passive:false});
+
+  touchHud.addEventListener("pointerup",(e)=>{
+    const btn = e.target.closest(".tbtn");
+    if(btn && btn.getAttribute("data-act")==="shoot") stopShooting();
+  },{passive:false});
+
+  // ============================================================
+  // Gamepads (reinforced) + manual selection with F2
+  // ============================================================
+  let inputsActivated=false;
+  function activateInputs(){ inputsActivated=true; }
+  window.addEventListener("mousedown", activateInputs, {passive:true});
+  window.addEventListener("touchstart", activateInputs, {passive:true});
+  window.addEventListener("keydown", activateInputs, {passive:true});
+  window.addEventListener("gamepadconnected", activateInputs);
+
+  let forcedPadIndex = null;
+  window.addEventListener("keydown",(e)=>{
+    if(e.key==="F2"){
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const list = [];
+      for(const gp of pads) if(gp) list.push(gp.index);
+      if(!list.length) return;
+      if(forcedPadIndex===null) forcedPadIndex=list[0];
+      else {
+        const i = list.indexOf(forcedPadIndex);
+        forcedPadIndex = list[(i+1) % list.length];
+      }
+      addChatLine("🎮 Pad seleccionado: #" + forcedPadIndex);
+    }
+  });
+
+  function readPads(){
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const list=[];
+    for(let i=0;i<pads.length;i++) if(pads[i]) list.push(pads[i]);
+    return list;
+  }
+
+  function chooseBestPad(pads){
+    let best=null, bestScore=-1;
+    for(const gp of pads){
+      const axes = gp.axes ? gp.axes.length : 0;
+      const btns = gp.buttons ? gp.buttons.length : 0;
+      const score = (gp.mapping==="standard"?50:0) + axes*3 + btns;
+      if(score > bestScore){ bestScore=score; best=gp; }
+    }
+    return best;
+  }
+
+  function getPad(){
+    const pads = readPads();
+    if(!pads.length) return null;
+    if(forcedPadIndex !== null){
+      const gp = pads.find(p=>p.index===forcedPadIndex);
+      if(gp) return gp;
+    }
+    return chooseBestPad(pads) || pads[0];
+  }
+
+  function axis(gp,i){ return (gp.axes && gp.axes.length>i) ? gp.axes[i] : 0; }
+  function pressed(gp,i){ return !!(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed); }
+  function valueBtn(gp,i){ return (gp.buttons && gp.buttons[i]) ? (gp.buttons[i].value||0) : 0; }
+
+  function padInput(){
+    const gp = getPad();
+    if(!gp) return {mx:0,my:0,look:0,shoot:false,jump:false,spawn:false,kick:false,del:false,chat:false};
+
+    let mx = deadzone(axis(gp,0), 0.12);
+    let my = deadzone(axis(gp,1), 0.12);
+
+    let look = deadzone(axis(gp,2), 0.14);
+    if(Math.abs(look) < 0.01) look = deadzone(axis(gp,3), 0.14);
+
+    if((gp.axes?.length||0) <= 2){
+      const l = pressed(gp,4) ? -1 : 0; // LB
+      const r = pressed(gp,5) ?  1 : 0; // RB
+      if(l||r) look = (l+r)*0.9;
+    }
+
+    const rt = Math.max(valueBtn(gp,7), valueBtn(gp,6));
+    const shoot = rt > 0.55 || pressed(gp,7);
+
+    const jump = pressed(gp,0);
+    const spawn = pressed(gp,3);
+    const kick = pressed(gp,2);
+    const del  = pressed(gp,8) || pressed(gp,10);
+    const chat = pressed(gp,9);
+
+    padTag.textContent = `Pad: #${gp.index} ${gp.id.slice(0,18)}…`;
+    return {mx,my,look,shoot,jump,spawn,kick,del,chat};
+  }
+
+  function gamepadDebug(){
+    const pads = readPads();
+    if(!pads.length) return "No hay gamepads.\nTip: tocá la pantalla o hacé click para activar inputs.";
+    return pads.map(gp=>{
+      const axes = (gp.axes||[]).map(v=>Math.round(v*100)/100).join(", ");
+      return `#${gp.index} ${gp.id}\nmap:${gp.mapping} axes(${gp.axes?.length||0}): ${axes}\nbtns:${gp.buttons?.length||0}`;
+    }).join("\n\n");
+  }
+
+  // ============================================================
+  // Map 500x500 (client-side)
+  // ============================================================
+  const MAP_W=500, MAP_H=500;
+  let map;
+
+  function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
+  function idx(x,y){ return y*MAP_W+x; }
+  function inBounds(x,y){ return x>=0 && y>=0 && x<MAP_W && y<MAP_H; }
+  function genMap(seed=1337){
+    const rnd=mulberry32(seed>>>0);
+    map=new Uint8Array(MAP_W*MAP_H); map.fill(1);
+    const carve=(x,y)=>{ if(inBounds(x,y)) map[idx(x,y)]=0; };
+
+    for(let i=0;i<220;i++){
+      const rw=6+(rnd()*20)|0, rh=6+(rnd()*20)|0;
+      const rx=2+(rnd()*(MAP_W-rw-4))|0;
+      const ry=2+(rnd()*(MAP_H-rh-4))|0;
+      for(let y=ry;y<ry+rh;y++) for(let x=rx;x<rx+rw;x++) carve(x,y);
+    }
+    for(let w=0;w<95;w++){
+      let x=(rnd()*(MAP_W-10)+5)|0;
+      let y=(rnd()*(MAP_H-10)+5)|0;
+      let dir=(rnd()*4)|0;
+      for(let steps=0;steps<10500;steps++){
+        carve(x,y); carve(x+1,y); carve(x,y+1); carve(x+1,y+1);
+        if(rnd()<0.22) dir=(rnd()*4)|0;
+        if(dir===0) x++; else if(dir===1) x--; else if(dir===2) y++; else y--;
+        x=Math.max(3,Math.min(MAP_W-4,x));
+        y=Math.max(3,Math.min(MAP_H-4,y));
+      }
+    }
+    for(let x=0;x<MAP_W;x++){ map[idx(x,0)]=1; map[idx(x,MAP_H-1)]=1; }
+    for(let y=0;y<MAP_H;y++){ map[idx(0,y)]=1; map[idx(MAP_W-1,y)]=1; }
+  }
+  function isWallCell(x,y){ if(!inBounds(x,y)) return true; return map[idx(x,y)]===1; }
+  function isWallFloat(x,y){ return isWallCell(Math.floor(x),Math.floor(y)); }
+  genMap(1337);
+
+  // ============================================================
+  // Player + Jump
+  // ============================================================
+  const localPlayer={ x:20.5, y:20.5, angle:0, z:0, vz:0, onGround:true };
+
+  function tryJump(p){
+    if(paused) return;
+    if(!p.onGround) return;
+    p.onGround=false;
+    p.vz=0.18;
+    vib.jump();
+  }
+  function updateJump(p){
+    p.vz -= 0.012;
+    p.z += p.vz;
+    if(p.z<=0){ p.z=0; p.vz=0; p.onGround=true; }
+  }
+
+  // ============================================================
+  // World entities
+  // ============================================================
+  function entitiesArray(){ return Array.from(worldEntities.values()); }
+
+  function objRadius(type){
+    if(type===4) return 0.20;     // ball
+    if(type===5) return 0.35;     // table
+    if(type===7) return 0.40;     // sofa
+    if(type===8) return 0.50;     // bed
+    if(type===9) return 0.28;     // door
+    return 0.22;
+  }
+
+  function pushCircleOut(px,py, pr, ox,oy, or){
+    const dx = px-ox, dy = py-oy;
+    const d = Math.hypot(dx,dy) || 1e-6;
+    const minD = pr + or;
+    if(d >= minD) return {x:px,y:py,hit:false};
+    const nx = dx/d, ny = dy/d;
+    const push = (minD - d) + 0.0005;
+    return {x: px + nx*push, y: py + ny*push, hit:true};
+  }
+
+  function resolveWallCollision(ent, radius){
+    if(isWallFloat(ent.x - radius, ent.y)){
+      ent.x = Math.floor(ent.x - radius) + 1 + radius;
+    }
+    if(isWallFloat(ent.x + radius, ent.y)){
+      ent.x = Math.floor(ent.x + radius) - radius;
+    }
+    if(isWallFloat(ent.x, ent.y - radius)){
+      ent.y = Math.floor(ent.y - radius) + 1 + radius;
+    }
+    if(isWallFloat(ent.x, ent.y + radius)){
+      ent.y = Math.floor(ent.y + radius) - radius;
+    }
+  }
+
+  function resolvePlayerVsEntities(p){
+    const pr=0.22;
+    for(const e of entitiesArray()){
+      if(e.kind==="object"){
+        const or=objRadius(e.type);
+        const r=pushCircleOut(p.x,p.y,pr, e.x,e.y,or);
+        if(r.hit){ p.x=r.x; p.y=r.y; }
+      }
+      if(e.kind==="npc"){
+        const r=pushCircleOut(p.x,p.y,pr, e.x,e.y,0.22);
+        if(r.hit){ p.x=r.x; p.y=r.y; }
+      }
+    }
+  }
+
+  // ============================================================
+  // Spawning / Deleting
+  // ============================================================
+  function spawnObjectAt(x,y,type){
+    if(!currentRoom) return addChatLine("⚠ Entrá a una sala para spawnear (sync).");
+    if(isWallFloat(x,y)) return;
+    wsSend({ t:"spawn", kind:"object", x, y, type });
+    vib.tap();
+  }
+  function spawnForward(owner){
+    const x=owner.x+Math.cos(owner.angle)*1.05;
+    const y=owner.y+Math.sin(owner.angle)*1.05;
+    spawnObjectAt(x,y,selectedType);
+  }
+  function spawnNPCAt(x,y){
+    if(!currentRoom) return addChatLine("⚠ Entrá a una sala para spawnear NPC (sync).");
+    if(isWallFloat(x,y)) return;
+    wsSend({ t:"spawn", kind:"npc", x, y, npcType:1 });
+    vib.tap();
+  }
+  function spawnNPCForward(){
+    const x=localPlayer.x+Math.cos(localPlayer.angle)*1.35;
+    const y=localPlayer.y+Math.sin(localPlayer.angle)*1.35;
+    spawnNPCAt(x,y);
+  }
+
+  function entityInCrosshair(maxDist=9){
+    const rayAng=localPlayer.angle;
+    let best=null, bestDist=999;
+    for(const e of entitiesArray()){
+      const dx=e.x-localPlayer.x, dy=e.y-localPlayer.y;
+      const dist=Math.hypot(dx,dy);
+      if(dist<0.35 || dist>maxDist) continue;
+      const ang=Math.atan2(dy,dx);
+      const rel=Math.abs(normAngle(ang-rayAng));
+      if(rel<0.055){
+        let blocked=false;
+        for(let t=0;t<dist;t+=0.25){
+          const tx=localPlayer.x+Math.cos(rayAng)*t;
+          const ty=localPlayer.y+Math.sin(rayAng)*t;
+          if(isWallFloat(tx,ty)){ blocked=true; break; }
+        }
+        if(!blocked && dist<bestDist){ bestDist=dist; best=e; }
+      }
+    }
+    return best;
+  }
+
+  function deleteLooked(){
+    const e = entityInCrosshair();
+    if(!e) return;
+    wsSend({ t:"entity_del", id:e.id });
+    vib.tap();
+  }
+
+  // ============================================================
+  // Kick bouncy ball (server-side)
+  // ============================================================
+  function nearestBall(maxDist=1.8){
+    let best=null,bestD=maxDist;
+    for(const e of entitiesArray()){
+      if(e.kind==="object" && e.type===4){
+        const d=Math.hypot(e.x-localPlayer.x, e.y-localPlayer.y);
+        if(d<bestD){ bestD=d; best=e; }
+      }
+    }
+    return best;
+  }
+  function kickBall(){
+    const b = nearestBall(2.0);
+    if(!b) return;
+    const ang = localPlayer.angle;
+    const ix = Math.cos(ang) * 0.22;
+    const iy = Math.sin(ang) * 0.22;
+    wsSend({ t:"kick", id:b.id, ix, iy });
+    vib.tap();
+  }
+
+  // ============================================================
+  // Weapon (shooting)
+  // ============================================================
+  let shooting=false;
+  let fireCooldown=0;
+  function startShooting(){ shooting=true; }
+  function stopShooting(){ shooting=false; }
+
+  canvas.addEventListener("mousedown",(e)=>{
+    if(e.button===0) startShooting();
+  });
+  window.addEventListener("mouseup",(e)=>{
+    if(e.button===0) stopShooting();
+  });
+
+  function raycastHit(maxDist=18){
+    const ang=localPlayer.angle;
+    let x=localPlayer.x, y=localPlayer.y;
+    const step=0.08;
+    for(let d=0; d<maxDist; d+=step){
+      x = localPlayer.x + Math.cos(ang)*d;
+      y = localPlayer.y + Math.sin(ang)*d;
+      if(isWallFloat(x,y)) return {x,y,hitId:null};
+
+      for(const e of entitiesArray()){
+        if(e.kind!=="npc") continue;
+        const rr=0.26;
+        const dx=e.x-x, dy=e.y-y;
+        if(dx*dx+dy*dy < rr*rr){
+          return {x:e.x,y:e.y,hitId:e.id};
+        }
+      }
+    }
+    return {x:localPlayer.x+Math.cos(ang)*maxDist, y:localPlayer.y+Math.sin(ang)*maxDist, hitId:null};
+  }
+
+  function fireWeapon(){
+    if(paused) return;
+    if(!currentRoom) return;
+    if(fireCooldown>0) return;
+
+    fireCooldown = 6;
+    const hit = raycastHit(18);
+
+    shotFX.push({life:10});
+    wsSend({ t:"shoot", x1:localPlayer.x, y1:localPlayer.y, x2:hit.x, y2:hit.y, hitId:hit.hitId });
+
+    if(hit.hitId){
+      wsSend({ t:"entity_damage", id: hit.hitId, dmg: 20 });
+    }
+
+    vib.shoot();
+  }
+
+  // ============================================================
+  // Movement update
+  // ============================================================
+  function updatePlayer(){
+    if(paused) return;
+
+    if(keys["e"]){ spawnForward(localPlayer); keys["e"]=false; }
+    if(keys["n"]){ spawnNPCForward(); keys["n"]=false; }
+    if(keys["x"]){ deleteLooked(); keys["x"]=false; }
+    if(keys["k"]){ kickBall(); keys["k"]=false; }
+    if(keys[" "]) tryJump(localPlayer);
+
+    const p = inputsActivated ? padInput() : null;
+    if(p){
+      if(p.spawn) spawnForward(localPlayer);
+      if(p.kick) kickBall();
+      if(p.del) deleteLooked();
+      if(p.jump) tryJump(localPlayer);
+      if(p.chat) showChat();
+      shooting = !!p.shoot;
+    }
+
+    if(keys["a"]) localPlayer.angle -= 0.050;
+    if(keys["d"]) localPlayer.angle += 0.050;
+
+    const padLook = p ? p.look : 0;
+    localPlayer.angle += deadzone(tLookX + padLook, 0.10) * 0.060;
+
+    let forward=0, strafe=0;
+    if(keys["w"]) forward += 1;
+    if(keys["s"]) forward -= 1;
+
+    const padMx = p ? p.mx : 0;
+    const padMy = p ? p.my : 0;
+
+    forward += (-(padMy + tMoveY));
+    strafe  += ((padMx + tMoveX));
+    forward = deadzone(forward,0.10);
+    strafe  = deadzone(strafe,0.10);
+
+    const spd=0.10;
+    const fx=Math.cos(localPlayer.angle), fy=Math.sin(localPlayer.angle);
+    const rx=Math.cos(localPlayer.angle+Math.PI/2), ry=Math.sin(localPlayer.angle+Math.PI/2);
+
+    const dx = fx*forward*spd + rx*strafe*spd*0.85;
+    const dy = fy*forward*spd + ry*strafe*spd*0.85;
+
+    if(dx||dy){
+      localPlayer.x += dx; resolveWallCollision(localPlayer,0.22);
+      localPlayer.y += dy; resolveWallCollision(localPlayer,0.22);
+    }
+    resolvePlayerVsEntities(localPlayer);
+  }
+
+  // Send player state 20Hz
+  setInterval(()=>{
+    if(!ws || ws.readyState!==1) return;
+    if(!currentRoom) return;
+    wsSend({ t:"state", state:{ x:localPlayer.x, y:localPlayer.y, a:localPlayer.angle, z:localPlayer.z }, userId:PERMA_ID });
+    netTag.textContent = "WS: " + wsStateLabel();
+  }, 50);
+
+  // ============================================================
+  // Raycaster + “more vertices” sprites + pistol model
+  // ============================================================
+  const FOV=Math.PI/3;
+  const numRays=420;
+  const maxDepth=95;
+  const zBuf=new Float32Array(numRays);
+
+  function roundRect(x,y,w,h,r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  function castRays(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#0b0b12"; ctx.fillRect(0,0,canvas.width,canvas.height/2);
+    ctx.fillStyle="#070707"; ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
+
+    const colW=canvas.width/numRays;
+    const camOffset = localPlayer.z * canvas.height * 0.55;
+
+    for(let i=0;i<numRays;i++){
+      const rayAngle = localPlayer.angle - FOV/2 + (i/numRays)*FOV;
+      const rayDirX = Math.cos(rayAngle);
+      const rayDirY = Math.sin(rayAngle);
+
+      let mapX = localPlayer.x|0;
+      let mapY = localPlayer.y|0;
+
+      const deltaDistX = Math.abs(1/(rayDirX===0?1e-9:rayDirX));
+      const deltaDistY = Math.abs(1/(rayDirY===0?1e-9:rayDirY));
+
+      let stepX, stepY, sideDistX, sideDistY;
+      if(rayDirX<0){ stepX=-1; sideDistX=(localPlayer.x-mapX)*deltaDistX; }
+      else { stepX=1; sideDistX=(mapX+1-localPlayer.x)*deltaDistX; }
+      if(rayDirY<0){ stepY=-1; sideDistY=(localPlayer.y-mapY)*deltaDistY; }
+      else { stepY=1; sideDistY=(mapY+1-localPlayer.y)*deltaDistY; }
+
+      let hit=false, side=0, dist=maxDepth;
+      for(let it=0; it<maxDepth*3; it++){
+        if(sideDistX<sideDistY){ sideDistX+=deltaDistX; mapX+=stepX; side=0; }
+        else { sideDistY+=deltaDistY; mapY+=stepY; side=1; }
+        if(!inBounds(mapX,mapY)){ hit=true; dist=maxDepth; break; }
+        if(map[idx(mapX,mapY)]===1){ hit=true; break; }
+      }
+
+      if(hit){
+        if(side===0) dist=(mapX-localPlayer.x+(1-stepX)/2)/(rayDirX===0?1e-9:rayDirX);
+        else dist=(mapY-localPlayer.y+(1-stepY)/2)/(rayDirY===0?1e-9:rayDirY);
+        dist=Math.abs(dist);
+      }
+      zBuf[i]=dist;
+
+      const corrected = dist * Math.cos(rayAngle-localPlayer.angle);
+      const wallH = Math.min(canvas.height, canvas.height/Math.max(0.001, corrected));
+      let shade = 255 - corrected*10.5;
+      if(side===1) shade*=0.82;
+      shade = clamp(shade|0, 0, 255);
+
+      ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+      ctx.fillRect(i*colW, (canvas.height-wallH)/2 + camOffset, colW+1, wallH);
+    }
+  }
+
+  function drawObjectSprite(type, screenX, topY, size){
+    const baseW = size*0.36;
+    const x = screenX - baseW/2;
+    const y = topY + size*0.30;
+
+    if(type===OBJ.BALL){
+      const r = baseW*0.56;
+      const cy = topY + size*0.60;
+      ctx.fillStyle="#7aff87";
+      ctx.beginPath(); ctx.ellipse(screenX, cy, r, r, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=0.25; ctx.fillStyle="#fff";
+      ctx.beginPath(); ctx.ellipse(screenX-r*0.22, cy-r*0.22, r*0.30, r*0.22, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+      return;
+    }
+
+    if(type===OBJ.CRYSTAL){
+      const w = baseW*1.10, h = size*0.70;
+      const cx=screenX, cy=y+h*0.52;
+      ctx.fillStyle="#b18cff";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy-h*0.56);
+      ctx.lineTo(cx+w*0.52, cy);
+      ctx.lineTo(cx, cy+h*0.56);
+      ctx.lineTo(cx-w*0.52, cy);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha=0.25; ctx.fillStyle="#fff";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy-h*0.56);
+      ctx.lineTo(cx+w*0.18, cy-h*0.10);
+      ctx.lineTo(cx, cy+h*0.10);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha=1;
+      return;
+    }
+
+    if(type===OBJ.BARREL){
+      const w = baseW*0.98, h = size*0.62;
+      ctx.fillStyle="#ffcf7a";
+      roundRect(x, y, w, h, 14); ctx.fill();
+      ctx.globalAlpha=0.85;
+      ctx.fillStyle="#e0b25e";
+      ctx.beginPath(); ctx.ellipse(screenX, y, w*0.48, w*0.18, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(screenX, y+h, w*0.48, w*0.16, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+      return;
+    }
+
+    if(type===OBJ.TABLE){
+      const w=baseW*1.25, h=size*0.55, sx=screenX-w/2;
+      ctx.fillStyle="#ffcf7a";
+      roundRect(sx, y+h*0.08, w, h*0.18, 14); ctx.fill();
+      ctx.fillStyle="#d8a85f";
+      roundRect(sx+w*0.10, y+h*0.26, w*0.18, h*0.55, 14); ctx.fill();
+      roundRect(sx+w*0.72, y+h*0.26, w*0.18, h*0.55, 14); ctx.fill();
+      return;
+    }
+
+    if(type===OBJ.CHAIR){
+      const w=baseW*0.85, h=size*0.62, sx=screenX-w/2;
+      ctx.fillStyle="#8cfffb";
+      roundRect(sx, y+h*0.35, w, h*0.30, 12); ctx.fill();
+      roundRect(sx, y, w, h*0.28, 12); ctx.fill();
+      return;
+    }
+
+    if(type===OBJ.SOFA){
+      const w=baseW*1.30, h=size*0.62, sx=screenX-w/2;
+      ctx.fillStyle="#b18cff";
+      roundRect(sx, y+h*0.22, w, h*0.50, 18); ctx.fill();
+      return;
+    }
+
+    if(type===OBJ.BED){
+      const w=baseW*1.40, h=size*0.62, sx=screenX-w/2;
+      ctx.fillStyle="#8cfffb";
+      roundRect(sx, y+h*0.28, w, h*0.40, 16); ctx.fill();
+      ctx.fillStyle="rgba(255,255,255,0.65)";
+      roundRect(sx+w*0.10, y+h*0.30, w*0.25, h*0.18, 16); ctx.fill();
+      return;
+    }
+
+    if(type===OBJ.DOOR){
+      const w=baseW*0.86, h=size*0.74;
+      ctx.fillStyle="#9a6b3d";
+      roundRect(screenX-w/2, y, w, h, 12); ctx.fill();
+      ctx.fillStyle="rgba(0,0,0,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(screenX+w*0.28, y+h*0.52, w*0.06, w*0.06, 0, 0, Math.PI*2);
+      ctx.fill();
+      return;
+    }
+
+    const w=baseW, h=size*0.60;
+    ctx.fillStyle="#8cfffb";
+    roundRect(x, y, w, h, 12); ctx.fill();
+    ctx.globalAlpha=0.25; ctx.fillStyle="#fff";
+    roundRect(x, y, w, h*0.18, 12); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  function drawNPCSprite(screenX, topY, size, hp=100){
+    const w=size*0.22, h=size*0.62;
+    const x=screenX-w/2;
+    const y=topY+size*0.32;
+
+    ctx.fillStyle="#ffd966";
+    roundRect(x,y,w,h,14); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,0.85)";
+    ctx.beginPath(); ctx.ellipse(screenX, y-h*0.12, w*0.38, w*0.38, 0, 0, Math.PI*2); ctx.fill();
+
+    ctx.globalAlpha=0.9;
+    ctx.fillStyle="rgba(0,0,0,0.5)";
+    roundRect(screenX-w*0.6, y-h*0.40, w*1.2, 8, 4); ctx.fill();
+    ctx.fillStyle="rgba(120,255,120,0.95)";
+    const ww = (w*1.2) * clamp(hp/100, 0, 1);
+    roundRect(screenX-w*0.6, y-h*0.40, ww, 8, 4); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  function drawRemotePlayer(screenX, topY, size){
+    const w=size*0.24, h=size*0.64;
+    const x=screenX-w/2;
+    const y=topY+size*0.30;
+    ctx.fillStyle = "#4da3ff";
+    roundRect(x,y,w,h,14); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(screenX, y-h*0.06, w*0.40, w*0.30, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle="rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(screenX, y-h*0.04, w*0.28, w*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  let recoil=0;
+  function drawWeapon(){
+    recoil *= 0.86;
+    const w=canvas.width, h=canvas.height;
+    const baseX = w*0.70;
+    const baseY = h*0.72 + recoil*18;
+
+    ctx.save();
+    ctx.globalAlpha=0.95;
+
+    ctx.fillStyle="rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(baseX+120, baseY+70, 160, 70, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // More-vertex gun polygon
+    ctx.fillStyle="rgba(80,90,110,0.92)";
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(baseX+60, baseY-16);
+    ctx.lineTo(baseX+110, baseY-26);
+    ctx.lineTo(baseX+170, baseY-28);
+    ctx.lineTo(baseX+250, baseY-12);
+    ctx.lineTo(baseX+290, baseY+6);
+    ctx.lineTo(baseX+285, baseY+28);
+    ctx.lineTo(baseX+250, baseY+42);
+    ctx.lineTo(baseX+205, baseY+52);
+    ctx.lineTo(baseX+150, baseY+60);
+    ctx.lineTo(baseX+125, baseY+86);
+    ctx.lineTo(baseX+85, baseY+92);
+    ctx.lineTo(baseX+55, baseY+74);
+    ctx.lineTo(baseX+25, baseY+44);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle="rgba(255,255,255,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(baseX+30, baseY+10);
+    ctx.lineTo(baseX+120, baseY-14);
+    ctx.lineTo(baseX+240, baseY-4);
+    ctx.lineTo(baseX+220, baseY+16);
+    ctx.lineTo(baseX+120, baseY+32);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle="rgba(60,70,90,0.98)";
+    roundRect(baseX+235, baseY-24, 190, 28, 12); ctx.fill();
+    ctx.fillStyle="rgba(0,0,0,0.35)";
+    roundRect(baseX+410, baseY-18, 18, 18, 6); ctx.fill();
+
+    ctx.fillStyle="rgba(60,60,70,0.98)";
+    ctx.beginPath();
+    ctx.moveTo(baseX+118, baseY+58);
+    ctx.lineTo(baseX+170, baseY+50);
+    ctx.lineTo(baseX+184, baseY+126);
+    ctx.lineTo(baseX+122, baseY+144);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle="rgba(200,210,230,0.35)";
+    roundRect(baseX+126, baseY-40, 34, 18, 6); ctx.fill();
+    roundRect(baseX+168, baseY-36, 20, 14, 5); ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawSprites(){
+    const ents=[];
+
+    for(const e of entitiesArray()){
+      const dx=e.x-localPlayer.x, dy=e.y-localPlayer.y;
+      ents.push({kind:e.kind, ref:e, dist:Math.hypot(dx,dy), dx, dy});
+    }
+    for(const rp of remotePlayers){
+      const dx=rp.x-localPlayer.x, dy=rp.y-localPlayer.y;
+      ents.push({kind:"remote", ref:rp, dist:Math.hypot(dx,dy), dx, dy});
+    }
+
+    ents.sort((a,b)=>b.dist-a.dist);
+    const camOffset = localPlayer.z * canvas.height * 0.55;
+
+    for(const it of ents){
+      const dist=it.dist;
+      if(dist<0.14) continue;
+      const ang=Math.atan2(it.dy,it.dx);
+      const rel=normAngle(ang-localPlayer.angle);
+      if(rel<-FOV/2 || rel>FOV/2) continue;
+
+      const screenX=(rel+FOV/2)/FOV*canvas.width;
+      const rayIndex = clamp(Math.floor(screenX/canvas.width*numRays),0,numRays-1);
+      if(dist >= zBuf[rayIndex]) continue;
+
+      const size = Math.min(canvas.height*1.35, canvas.height/dist);
+      const topY = (canvas.height-size)/2 + camOffset;
+
+      if(it.kind==="object") drawObjectSprite(it.ref.type, screenX, topY, size);
+      if(it.kind==="npc") drawNPCSprite(screenX, topY, size, it.ref.hp ?? 100);
+      if(it.kind==="remote") drawRemotePlayer(screenX, topY, size);
+    }
+  }
+
+  function drawHUD(){
+    ctx.save();
+    ctx.fillStyle="rgba(255,255,255,0.92)";
+    ctx.font="14px system-ui";
+    ctx.fillText(`Nombre: ${PERMA_NICK} | Sala: ${currentRoom?currentRoom.name:"—"} | Chat: T`, 12, 24);
+    ctx.fillText(`Obj: ${typeNames[selectedType]} | E spawn | N NPC | K kick | X borrar`, 12, 44);
+
+    const cx=canvas.width/2, cy=canvas.height/2;
+    ctx.globalAlpha=0.8;
+    ctx.strokeStyle="#fff";
+    ctx.beginPath();
+    ctx.moveTo(cx-8,cy); ctx.lineTo(cx+8,cy);
+    ctx.moveTo(cx,cy-8); ctx.lineTo(cx,cy+8);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawShotFX(){
+    ctx.save();
+    for(const s of shotFX){
+      ctx.globalAlpha = clamp(s.life/10, 0, 1);
+      ctx.strokeStyle="rgba(255,255,255,0.85)";
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width/2, canvas.height/2);
+      ctx.lineTo(canvas.width/2 + (Math.random()*12-6), canvas.height/2 + (Math.random()*12-6));
+      ctx.stroke();
+      s.life -= 1;
+    }
+    for(let i=shotFX.length-1;i>=0;i--) if(shotFX[i].life<=0) shotFX.splice(i,1);
+    ctx.restore();
+  }
+
+  // Pointer lock for aim (desktop)
+  canvas.addEventListener("click",()=>{
+    try{ canvas.requestPointerLock(); }catch(e){}
+  });
+  canvas.addEventListener("mousemove",(e)=>{
+    if(document.pointerLockElement===canvas){
+      localPlayer.angle += e.movementX * 0.0022;
+    }
+  });
+
+  // ============================================================
+  // MAIN LOOP
+  // ============================================================
+  function loop(){
+    gpdbgEl.textContent = gamepadDebug();
+
+    if(!paused){
+      updateJump(localPlayer);
+      updatePlayer();
+
+      if(fireCooldown>0) fireCooldown--;
+      if(shooting){
+        fireWeapon();
+        recoil = Math.min(1, recoil + 0.65);
+      }
+    }
+
+    castRays();
+    drawSprites();
+    drawWeapon();
+    drawShotFX();
+    drawHUD();
+
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+})();
+</script>
+</body>
+</html>
